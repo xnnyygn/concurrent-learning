@@ -1,7 +1,5 @@
 package in.xnnyygn.concurrent.hashset;
 
-import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicMarkableReference;
 
@@ -9,34 +7,40 @@ public class LockFreeHashSet<T> {
 
     private static final int MASK = 0x00FFFFFF;
     private static final double LOAD_FACTOR_THRESHOLD = 2.0;
-    private final AtomicBoolean atomicResizing = new AtomicBoolean(false);
+    private final AtomicInteger atomicCapacity;
     private final AtomicInteger atomicSize = new AtomicInteger(0);
-    private volatile BucketList<T>[] bucketLists;
+    //    private volatile BucketList<T>[] bucketLists;
+    private final DRoot<T> root = new DRoot<>();
 
-    @SuppressWarnings("unchecked")
+//    @SuppressWarnings("unchecked")
+//    public LockFreeHashSet(int capacity) {
+//        if (capacity <= 0) {
+//            throw new IllegalArgumentException("capacity <= 0");
+//        }
+//        bucketLists = (BucketList<T>[]) new BucketList[capacity];
+//        bucketLists[0] = new BucketList<>();
+//    }
+
     public LockFreeHashSet(int capacity) {
-        if (capacity <= 0) {
-            throw new IllegalArgumentException("capacity <= 0");
-        }
-        bucketLists = (BucketList<T>[]) new BucketList[capacity];
-        bucketLists[0] = new BucketList<>();
+        atomicCapacity = new AtomicInteger(capacity);
     }
 
     public boolean add(T x) {
-        int index = hashCode(x) % bucketLists.length;
-        if (!bucketList(index).add(x)) {
+        int index = hashCode(x) % atomicCapacity.get();
+        if (!root.locate(index).add(x)) {
             return false;
         }
         double size = atomicSize.incrementAndGet();
-        if (size / bucketLists.length > LOAD_FACTOR_THRESHOLD) {
-            resize();
+        int capacity = atomicCapacity.get();
+        if (size / capacity > LOAD_FACTOR_THRESHOLD) {
+            atomicCapacity.compareAndSet(capacity, capacity * 2);
         }
         return true;
     }
 
     public boolean remove(T x) {
-        int index = hashCode(x) % bucketLists.length;
-        if (bucketList(index).remove(x)) {
+        int index = hashCode(x) % atomicCapacity.get();
+        if (root.locate(index).remove(x)) {
             atomicSize.decrementAndGet();
             return true;
         }
@@ -44,8 +48,8 @@ public class LockFreeHashSet<T> {
     }
 
     public boolean contains(T x) {
-        int index = hashCode(x) % bucketLists.length;
-        return bucketList(index).contains(x);
+        int index = hashCode(x) % atomicCapacity.get();
+        return root.locate(index).contains(x);
     }
 
     public int size() {
@@ -53,42 +57,100 @@ public class LockFreeHashSet<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private void resize() {
-        BucketList<T>[] oldBucketLists = bucketLists;
-        int oldCapacity = oldBucketLists.length;
-        if (atomicResizing.compareAndSet(false, true)) {
-            return;
+//    private void resize() {
+//        int oldCapacity = capacity;
+//        if (atomicResizing.compareAndSet(false, true)) {
+//            return;
+//        }
+//        if (capacity != oldCapacity) {
+//            return;
+//        }
+//        int newCapacity = oldCapacity * 2;
+//        System.out.println("resize from " + oldCapacity + " to " + newCapacity);
+//        capacity = newCapacity;
+//        atomicResizing.set(false);
+//    }
+
+//    private BucketList<T> bucketList(int index) {
+//        BucketList<T> bucketList = bucketLists[index];
+//        if (bucketList == null) {
+//            BucketList<T> parentBucketList = bucketList(parent(index));
+//            bucketLists[index] = parentBucketList.subList(index);
+//        }
+//        return bucketLists[index];
+//    }
+
+//    private int parent(int index) {
+//        return index - Integer.highestOneBit(index);
+//    }
+
+//    @Override
+//    public String toString() {
+//        return "LockFreeHashSet{" +
+//                "size=" + atomicSize.get() +
+//                ", bucketLists=" + Arrays.toString(bucketLists) +
+//                '}';
+//    }
+
+    private static class DRoot<T> {
+        private final DNode<T> left; // 0
+        private DNode<T> right; // 1
+
+        DRoot() {
+            left = new DNode<>(0, new BucketList<>());
         }
-        if (bucketLists.length != oldCapacity) {
-            return;
+
+        BucketList<T> locate(int index) {
+            if (index < 0) {
+                throw new IllegalArgumentException("index < 0");
+            }
+            DNode<T> node = (index & 1) == 0 ? left : right();
+            return node.locate(index, 2);
         }
-        int newCapacity = oldCapacity * 2;
-        System.out.println("resize from " + oldCapacity + " to " + newCapacity);
-        BucketList<T>[] newBucketLists = (BucketList<T>[]) new BucketList[newCapacity];
-        newBucketLists[0] = oldBucketLists[0];
-        bucketLists = newBucketLists;
-        atomicResizing.set(false);
+
+        private DNode<T> right() {
+            if (right == null) {
+                right = new DNode<>(1, left.list.subList(1));
+            }
+            return right;
+        }
     }
 
-    private BucketList<T> bucketList(int index) {
-        BucketList<T> bucketList = bucketLists[index];
-        if (bucketList == null) {
-            BucketList<T> parentBucketList = bucketList(parent(index));
-            bucketLists[index] = parentBucketList.subList(index);
+    private static class DNode<T> {
+        private final int index;
+        private final BucketList<T> list;
+        private DNode<T> left;
+        private DNode<T> right;
+
+        DNode(int index, BucketList<T> list) {
+            this.index = index;
+            this.list = list;
         }
-        return bucketLists[index];
-    }
 
-    private int parent(int index) {
-        return index - Integer.highestOneBit(index);
-    }
+        BucketList<T> locate(int index, int mask) {
+            if (index == this.index) {
+                return list;
+            }
+            if ((index & mask) == 0) {
+                return left().locate(index, mask << 1);
+            }
+            return right(mask).locate(index, mask << 1);
+        }
 
-    @Override
-    public String toString() {
-        return "LockFreeHashSet{" +
-                "size=" + atomicSize.get() +
-                ", bucketLists=" + Arrays.toString(bucketLists) +
-                '}';
+        private DNode<T> left() {
+            if (left == null) {
+                left = new DNode<>(index, list);
+            }
+            return left;
+        }
+
+        private DNode<T> right(int mask) {
+            if (right == null) {
+                int i = this.index + mask;
+                right = new DNode<>(i, list.subList(i));
+            }
+            return right;
+        }
     }
 
     private static class BucketList<T> {
