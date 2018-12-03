@@ -1,11 +1,14 @@
 package in.xnnyygn.concurrent.skiplist;
 
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 @SuppressWarnings("Duplicates")
-public class LazySkipList<T> {
+public class LazySkipList2<T> {
 
     private static final int MAX_LEVEL = 5;
     private int highestLevel = MAX_LEVEL;
@@ -13,7 +16,7 @@ public class LazySkipList<T> {
     private final Node<T> head;
     private final Node<T> tail;
 
-    public LazySkipList() {
+    public LazySkipList2() {
         head = new Node<>(Integer.MIN_VALUE);
         tail = new Node<>(Integer.MAX_VALUE);
         for (int level = 0; level <= MAX_LEVEL; level++) {
@@ -58,7 +61,7 @@ public class LazySkipList<T> {
                 predecessor = current;
                 current = current.next[level];
             }
-            if (levelFound == -1 && current.key == key) {
+            if (levelFound == -1 && current.key == key && current.values.contains(x)) {
                 levelFound = level;
             }
             predecessors[level] = predecessor;
@@ -90,7 +93,16 @@ public class LazySkipList<T> {
                     // wait for another thread to complete linking
                     while (!nodeFound.fullyLinked) {
                     }
-                    return false;
+                    nodeFound.lock();
+                    try {
+                        if (nodeFound.values.contains(x)) {
+                            return false;
+                        }
+                        nodeFound.values.add(x);
+                        return true;
+                    }finally {
+                        nodeFound.unlock();
+                    }
                 }
                 continue;
             }
@@ -126,7 +138,7 @@ public class LazySkipList<T> {
         }
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked"})
     public boolean remove(T x) {
         Node<T>[] predecessors = (Node<T>[]) new Node[MAX_LEVEL + 1];
         Node<T>[] successors = (Node<T>[]) new Node[MAX_LEVEL + 1];
@@ -152,9 +164,15 @@ public class LazySkipList<T> {
                 // victim's lock is required because lock coupling
                 victim.lock();
                 // re-check, victim must be removed by another thread
-                if (victim.marked) {
+                if (victim.marked || !victim.values.contains(x)) {
                     victim.unlock();
                     return false;
+                }
+
+                victim.values.remove(x);
+                if(!victim.values.isEmpty()) {
+                    victim.unlock();
+                    return true;
                 }
             }
             // mark and process
@@ -191,7 +209,7 @@ public class LazySkipList<T> {
     private static class Node<T> {
         private final Lock lock = new ReentrantLock();
         private final int key;
-        private final T value;
+        private final List<T> values;
         private final Node<T>[] next;
         private volatile boolean marked = false;
         private volatile boolean fullyLinked = false;
@@ -200,7 +218,7 @@ public class LazySkipList<T> {
         @SuppressWarnings("unchecked")
         Node(int key) {
             this.key = key;
-            value = null;
+            values = Collections.emptyList();
             next = (Node<T>[]) new Node[MAX_LEVEL + 1];
             topLevel = MAX_LEVEL;
         }
@@ -208,7 +226,8 @@ public class LazySkipList<T> {
         @SuppressWarnings("unchecked")
         Node(T x, int height) {
             key = x.hashCode();
-            value = x;
+            values = new LinkedList<>();
+            values.add(x);
             next = (Node<T>[]) new Node[height + 1];
             topLevel = height;
         }
