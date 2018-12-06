@@ -6,6 +6,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+@SuppressWarnings("Duplicates")
 public class SimpleReentrantLock implements Lock {
 
     private final Lock lock = new ReentrantLock();
