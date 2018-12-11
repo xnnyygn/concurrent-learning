@@ -5,43 +5,39 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @SuppressWarnings("Duplicates")
-public class SimpleFuture<T> {
+public class SimpleFuture2<T> {
 
     private volatile boolean completed = false;
     private volatile T value;
     private volatile Thread thread = null;
-    private final ThreadScheduler scheduler = new ThreadScheduler();
+    final ThreadScheduler scheduler = new ThreadScheduler();
 
     public T get() {
-        if (completed) {
-            return value;
-        }
-        thread = Thread.currentThread();
-        if (completed) {
-            return value;
-        }
-        scheduler.park(this);
-        return value;
-    }
-
-    public T get(long time, @Nonnull TimeUnit unit) throws TimeoutException {
-        if (completed) {
-            return value;
-        }
-        final long deadline = System.nanoTime() + unit.toNanos(time);
-        thread = Thread.currentThread();
-        if (completed) {
-            return value;
-        }
-        if (scheduler.parkUntil(this, deadline)) {
-            // 1. completed = true, interrupt/unpark
-            // 2. completed = false, now > deadline(timeout)
+        while (true) {
             if (completed) {
                 return value;
             }
-            throw new TimeoutException();
-        } else {
-            return value;
+            if (thread == null) {
+                thread = Thread.currentThread();
+            } else {
+                scheduler.park(this);
+            }
+        }
+    }
+
+    public T get(long time, @Nonnull TimeUnit unit) throws TimeoutException {
+        final long deadline = System.nanoTime() + unit.toNanos(time);
+        while (true) {
+            if (completed) {
+                return value;
+            }
+            if (thread == null) {
+                thread = Thread.currentThread();
+            } else if (System.nanoTime() > deadline) {
+                throw new TimeoutException();
+            } else {
+                scheduler.parkUntil(this, deadline);
+            }
         }
     }
 

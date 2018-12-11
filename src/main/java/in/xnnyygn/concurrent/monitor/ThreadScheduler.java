@@ -45,4 +45,10 @@ public class ThreadScheduler {
         }
     }
 
+    @Override
+    public String toString() {
+        return "ThreadScheduler{" +
+                "state=" + state.get() +
+                '}';
+    }
 }
