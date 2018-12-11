@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 @SuppressWarnings("Duplicates")
-public class Future4<T> {
+public class Future5<T> {
 
     private static final int STATE_NEW = 0;
     private static final int STATE_COMPLETED = 1;
@@ -24,6 +24,7 @@ public class Future4<T> {
         Node t;
         while (true) {
             if (Thread.interrupted()) {
+                removeNode(n);
                 throw new InterruptedException();
             }
             if (state.get() == STATE_COMPLETED) {
@@ -49,6 +50,7 @@ public class Future4<T> {
         Node t;
         while (true) {
             if (Thread.interrupted()) {
+                removeNode(n);
                 throw new InterruptedException();
             }
             if (state.get() == STATE_COMPLETED) {
@@ -61,10 +63,48 @@ public class Future4<T> {
                 n.next = t;
                 queued = top.compareAndSet(t, n);
             } else if (System.nanoTime() > deadline) {
+                removeNode(n);
                 throw new TimeoutException();
             } else {
                 LockSupport.parkUntil(this, deadline);
             }
+        }
+    }
+
+    private void removeNode(Node n) {
+        if (n == null) {
+            return;
+        }
+        n.thread = null;
+        unlinkRemovedNodes();
+    }
+
+    private void unlinkRemovedNodes() {
+        Node p; // predecessor
+        Node m; // current node
+        Node s; // successor
+
+        restart:
+        while (true) {
+            for (p = null, m = top.get(); m != null; m = s) {
+                s = m.next;
+                if (m.thread != null) {
+                    p = m;
+                } else if (p != null) {
+                    // m.thread == null, m was removed
+                    if (p.next != s) {
+                        p.next = s; // skip 1 node every time
+                    }
+                    if (p.thread == null) { // predecessor was removed
+                        continue restart;
+                    }
+                } else if (!top.compareAndSet(m, s)) {
+                    // m.thread == null && p == null, m is first node and removed
+                    // if failed, top node was changed during traversal
+                    continue restart;
+                }
+            }
+            break;
         }
     }
 
@@ -74,16 +114,24 @@ public class Future4<T> {
         }
         this.value = value;
 
-        Node n = top.get();
+        Node n = top.getAndSet(null);
+        Node s;
+        Thread t;
         while (n != null) {
-            LockSupport.unpark(n.thread);
-            n = n.next;
+            t = n.thread;
+            if (t != null) {
+                LockSupport.unpark(t);
+                n.thread = null;
+            }
+            s = n.next;
+            n.next = null;
+            n = s;
         }
     }
 
     private static class Node {
-        final Thread thread;
-        Node next = null;
+        volatile Thread thread;
+        volatile Node next = null;
 
         Node() {
             thread = Thread.currentThread();
