@@ -13,11 +13,14 @@ public class ThreadScheduler {
     private final AtomicInteger state = new AtomicInteger(THREAD_STATE_NORMAL);
 
     public boolean park(Object blocker) {
-        if (state.compareAndSet(THREAD_STATE_NORMAL, THREAD_STATE_PARK)) {
-            LockSupport.park(blocker);
-            return true;
+        if (!state.compareAndSet(THREAD_STATE_NORMAL, THREAD_STATE_PARK)) {
+            return false;
         }
-        return false;
+        LockSupport.park(blocker);
+        if (!state.compareAndSet(THREAD_STATE_PARK, THREAD_STATE_WAKE_UP)) {
+            Thread.interrupted();
+        }
+        return true;
     }
 
     public boolean parkUntil(Object blocker, long deadline) {
@@ -36,9 +39,9 @@ public class ThreadScheduler {
         if (s == THREAD_STATE_NORMAL && state.compareAndSet(THREAD_STATE_NORMAL, THREAD_STATE_WAKE_UP)) {
             return;
         }
-        if (s == THREAD_STATE_PARK) {
-            state.set(THREAD_STATE_WAKE_UP);
-            LockSupport.unpark(thread);
+        if (s == THREAD_STATE_PARK && state.compareAndSet(THREAD_STATE_PARK, THREAD_STATE_WAKE_UP)) {
+            thread.interrupt();
+            return;
         }
         if (s == THREAD_STATE_PARK_TIMED && state.compareAndSet(THREAD_STATE_PARK_TIMED, THREAD_STATE_WAKE_UP)) {
             thread.interrupt();

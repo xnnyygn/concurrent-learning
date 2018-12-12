@@ -12,8 +12,11 @@ public class SimpleFuture2<T> {
     private volatile Thread thread = null;
     final ThreadScheduler scheduler = new ThreadScheduler();
 
-    public T get() {
+    public T get() throws InterruptedException {
         while (true) {
+            if(Thread.interrupted()) {
+                throw new InterruptedException();
+            }
             if (completed) {
                 return value;
             }
@@ -25,9 +28,12 @@ public class SimpleFuture2<T> {
         }
     }
 
-    public T get(long time, @Nonnull TimeUnit unit) throws TimeoutException {
+    public T get(long time, @Nonnull TimeUnit unit) throws TimeoutException, InterruptedException {
         final long deadline = System.nanoTime() + unit.toNanos(time);
         while (true) {
+            if(Thread.interrupted()) {
+                throw new InterruptedException();
+            }
             if (completed) {
                 return value;
             }

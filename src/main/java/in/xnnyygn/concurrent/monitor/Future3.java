@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 
 @SuppressWarnings("Duplicates")
-public class Future3<T> {
+public class Future3<T> implements IFuture<T> {
 
     private static final int STATE_NEW = 0;
     private static final int STATE_COMPLETED = 1;
@@ -18,6 +18,7 @@ public class Future3<T> {
     private final AtomicReference<Node> top = new AtomicReference<>(null);
 
 
+    @Override
     public T get() {
         if (state.get() == STATE_COMPLETED) {
             return value;
@@ -37,6 +38,7 @@ public class Future3<T> {
         return value;
     }
 
+    @Override
     public T get(long time, @Nonnull TimeUnit unit) throws TimeoutException {
         if (state.get() == STATE_COMPLETED) {
             return value;
@@ -61,6 +63,7 @@ public class Future3<T> {
         return value;
     }
 
+    @Override
     public void set(T value) {
         if (state.compareAndSet(STATE_NEW, STATE_COMPLETED)) {
             throw new IllegalStateException("expected state new, but was " + state.get());
