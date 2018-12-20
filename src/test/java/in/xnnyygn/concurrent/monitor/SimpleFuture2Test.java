@@ -23,6 +23,9 @@ public class SimpleFuture2Test {
     }
 
     private void getValue(SimpleFuture2<String> f) {
-        System.out.println(f.get());
+        try {
+            System.out.println(f.get());
+        } catch (InterruptedException ignore) {
+        }
     }
 }
