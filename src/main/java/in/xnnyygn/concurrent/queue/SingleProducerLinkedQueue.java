@@ -6,13 +6,13 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicReference;
 
 @SuppressWarnings("Duplicates")
-public class LinkedQueue2<T> extends AbstractQueue<T> {
+public class SingleProducerLinkedQueue<T> extends AbstractQueue<T> {
 
     private final AtomicReference<Node<T>> head;
     private final AtomicReference<Node<T>> tail;
 
-    public LinkedQueue2() {
-        Node<T> node = new Node<>(null);
+    public SingleProducerLinkedQueue() {
+        final Node<T> node = new Node<>(null);
         head = new AtomicReference<>(node);
         tail = new AtomicReference<>(node);
     }
@@ -43,14 +43,11 @@ public class LinkedQueue2<T> extends AbstractQueue<T> {
         while (true) {
             s = n.next.get();
             if (s == null) { // last node
-                if (n.next.compareAndSet(null, node)) {
-                    if (n != t) {
-                        tail.compareAndSet(t, n);
-                    }
-                    return true;
+                n.next.set(node);
+                if (n != t) {
+                    tail.compareAndSet(t, n);
                 }
-                // re-read next and retry
-                continue;
+                return true;
             }
 
             if (s == n) { // linked to self
@@ -85,7 +82,7 @@ public class LinkedQueue2<T> extends AbstractQueue<T> {
                 value = n.value.get();
 
                 if (value != null && n.value.compareAndSet(value, null)) {
-                    if (n != h) {
+                    if (n != h) { // move every two nodes
                         s = n.next.get();
                         if (s == null) {
                             updateHead(h, n);
