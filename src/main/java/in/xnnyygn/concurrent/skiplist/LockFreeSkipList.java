@@ -47,36 +47,37 @@ public class LockFreeSkipList<T> {
 
     private boolean find(T x, Node<T>[] predecessors, Node<T>[] successors) {
         int key = x.hashCode();
-        Node<T> node0 = head;
-        Node<T> node1 = null;
-        Node<T> node2;
+        Node<T> predecessor = head;
+        Node<T> current = null;
+        Node<T> successor;
         boolean[] markHolder = new boolean[1];
         boolean snip;
 
         retry:
         for (int level = MAX_LEVEL; level >= 0; level--) {
-            node1 = node0.next(level);
+            current = predecessor.next(level);
             while (true) {
-                node2 = node1.nextAndMark(level, markHolder);
+                successor = current.nextAndMark(level, markHolder);
                 while (markHolder[0]) {
-                    snip = node0.next[level].compareAndSet(node1, node2, false, false);
+                    snip = predecessor.next[level].compareAndSet(current, successor, false, false);
                     if (!snip) {
                         continue retry;
                     }
-                    node1 = node0.next(level);
-                    node2 = node1.nextAndMark(level, markHolder);
+                    current = predecessor.next(level);
+                    successor = current.nextAndMark(level, markHolder);
                 }
-                if (node1.key < key) {
-                    node0 = node1;
-                    node1 = node2;
+
+                if (current.key < key) {
+                    predecessor = current;
+                    current = successor;
                 } else {
                     break;
                 }
             }
-            predecessors[level] = node0;
-            successors[level] = node1;
+            predecessors[level] = predecessor;
+            successors[level] = current;
         }
-        return node1.key == key;
+        return current.key == key;
     }
 
     private boolean find2(T x, Node<T>[] predecessors, Node<T>[] successors) {
