@@ -1,6 +1,5 @@
 package in.xnnyygn.concurrent.skiplist;
 
-import java.util.Arrays;
 import java.util.Random;
 
 public class SkipList<T> {
@@ -10,11 +9,10 @@ public class SkipList<T> {
 
     private final Random random = new Random();
     private final Node<T> head;
-    private final Node<T> tail;
 
     public SkipList() {
         head = new Node<>(Integer.MIN_VALUE);
-        tail = new Node<>(Integer.MAX_VALUE);
+        final Node<T> tail = new Node<>(Integer.MAX_VALUE);
         for (int level = 0; level < MAX_LEVEL; level++) {
             head.next[level] = tail;
         }
@@ -117,7 +115,7 @@ public class SkipList<T> {
         public String toString() {
             return "Node{" +
                     "key=" + key +
-                    ", value=" + value +
+                    ", item=" + value +
                     '}';
         }
     }

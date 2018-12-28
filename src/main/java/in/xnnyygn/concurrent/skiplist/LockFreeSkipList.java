@@ -21,28 +21,28 @@ public class LockFreeSkipList<T> {
 
     public boolean contains(T x) {
         int key = x.hashCode();
-        Node<T> node0 = head;
-        Node<T> node1 = null;
-        Node<T> node2;
+        Node<T> predecessor = head;
+        Node<T> current = null;
+        Node<T> successor;
         boolean[] markHolder = new boolean[1];
         for (int level = MAX_LEVEL; level >= 0; level--) {
-            node1 = node0.next(level);
+            current = predecessor.next(level);
             while (true) {
-                node2 = node1.nextAndMark(level, markHolder);
+                successor = current.nextAndMark(level, markHolder);
                 while (markHolder[0]) {
-                    // node1 = node1.next(level); // read again?
-                    node1 = node2;
-                    node2 = node1.nextAndMark(level, markHolder);
+                    // current = current.next(level); // read again?
+                    current = successor;
+                    successor = current.nextAndMark(level, markHolder);
                 }
-                if (node1.key < key) {
-                    node0 = node1;
-                    node1 = node2;
+                if (current.key < key) {
+                    predecessor = current;
+                    current = successor;
                 } else {
                     break;
                 }
             }
         }
-        return node1.key == key;
+        return current.key == key;
     }
 
     private boolean find(T x, Node<T>[] predecessors, Node<T>[] successors) {

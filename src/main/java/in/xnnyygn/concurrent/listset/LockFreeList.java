@@ -2,42 +2,58 @@ package in.xnnyygn.concurrent.listset;
 
 import java.util.concurrent.atomic.AtomicMarkableReference;
 
-public class FreeLockList<T> {
+/**
+ * HM linked list based on {@code AtomicMarkableReference}.
+ *
+ * @param <T>
+ */
+public class LockFreeList<T> {
 
     private final Node<T> head;
 
-    public FreeLockList() {
+    public LockFreeList() {
         head = new Node<>(Integer.MIN_VALUE, null, new Node<>(Integer.MAX_VALUE));
     }
 
     public boolean add(T item) {
-        int key = item.hashCode();
+        final int key = item.hashCode();
         Window<T> window;
+        Node<T> newNode;
         while (true) {
             window = find(head, key);
-            if (window.currentKey() == key) {
+            // same key
+            if (window.current.key == key) {
                 return false;
             }
-            Node<T> node = new Node<>(key, item, window.current);
-            if (window.casPredecessor(node)) {
+            newNode = new Node<>(key, item, window.current);
+            if (window.predecessor.nextAndMark.compareAndSet(
+                    window.current, newNode, false, false)) {
                 return true;
             }
+            // retry
         }
     }
 
     public boolean remove(T item) {
-        int key = item.hashCode();
+        final int key = item.hashCode();
         Window<T> window;
+        Node<T> successor;
         while (true) {
             window = find(head, key);
-            if (window.currentKey() != key) {
+            // not found
+            if (window.current.key != key) {
                 return false;
             }
-            if (!window.attemptMarkCurrent()) {
-                continue; // retry
+            successor = window.current.nextAndMark.getReference();
+            // logical delete
+            if (window.current.nextAndMark.attemptMark(successor, true)) {
+                // physical delete
+                window.predecessor.nextAndMark.compareAndSet(
+                        window.current, successor, false, false);
+                // fail is ok
+                return true;
             }
-            window.casPredecessor(window.successor());
-            return true;
+            // retry
         }
     }
 
@@ -51,29 +67,24 @@ public class FreeLockList<T> {
     }
 
     private Window<T> find(Node<T> head, int key) {
-        Node<T> predecessor;
-        Node<T> current;
-        Node<T> successor;
         boolean[] markedHolder = {false};
         boolean snip;
 
         retry:
-        while (true) {
-            predecessor = head;
-            current = predecessor.next();
-
+        for (Node<T> predecessor = head, current = predecessor.next(), successor; ; ) {
             while (true) {
-                successor = current.nextAndMarked.get(markedHolder);
+                successor = current.nextAndMark.get(markedHolder);
 
                 // current node is deleted
                 while (markedHolder[0]) {
-                    snip = predecessor.nextAndMarked.compareAndSet(current, successor, false, false);
+                    snip = predecessor.nextAndMark.compareAndSet(
+                            current, successor, false, false);
                     if (!snip) {
                         continue retry;
                     }
 
                     current = successor;
-                    successor = current.nextAndMarked.get(markedHolder);
+                    successor = current.nextAndMark.get(markedHolder);
                 }
 
                 if (current.key >= key) {
@@ -95,47 +106,31 @@ public class FreeLockList<T> {
             this.predecessor = predecessor;
             this.current = current;
         }
-
-        int currentKey() {
-            return current.key;
-        }
-
-        boolean casPredecessor(Node<T> node) {
-            return predecessor.nextAndMarked.compareAndSet(current, node, false, false);
-        }
-
-        Node<T> successor() {
-            return current.next();
-        }
-
-        boolean attemptMarkCurrent() {
-            Node<T> successor = current.next();
-            return current.nextAndMarked.attemptMark(successor, true);
-        }
     }
 
     private static class Node<T> {
         private final int key;
-        private T value;
-        private final AtomicMarkableReference<Node<T>> nextAndMarked;
+        private final T item;
+        private final AtomicMarkableReference<Node<T>> nextAndMark;
 
         Node(int key) {
             this.key = key;
-            nextAndMarked = new AtomicMarkableReference<>(null, false);
+            this.item = null;
+            nextAndMark = new AtomicMarkableReference<>(null, false);
         }
 
-        Node(int key, T value, Node<T> next) {
+        Node(int key, T item, Node<T> next) {
             this.key = key;
-            this.value = value;
-            nextAndMarked = new AtomicMarkableReference<>(next, false);
+            this.item = item;
+            nextAndMark = new AtomicMarkableReference<>(next, false);
         }
 
         boolean isMarked() {
-            return nextAndMarked.isMarked();
+            return nextAndMark.isMarked();
         }
 
         Node<T> next() {
-            return nextAndMarked.getReference();
+            return nextAndMark.getReference();
         }
     }
 }

@@ -12,11 +12,10 @@ public class SkipListSet1<T> {
 
     private final ThreadLocalRandom random = ThreadLocalRandom.current();
     private final Node<T> head;
-    private final Node<T> tail;
 
     public SkipListSet1() {
         head = new Node<>(null, Integer.MIN_VALUE, MAX_LEVEL);
-        tail = new Node<>(null, Integer.MAX_VALUE, MAX_LEVEL);
+        final Node<T> tail = new Node<>(null, Integer.MAX_VALUE, MAX_LEVEL);
         for (int i = 0; i < MAX_LEVEL; i++) {
             head.next[i] = new AtomicMarkableReference<>(tail, false);
         }
