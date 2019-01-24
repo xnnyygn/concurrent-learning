@@ -3,6 +3,7 @@ package in.xnnyygn.concurrent.monitor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public class ThreadScheduler {
 
     private static final int THREAD_STATE_NORMAL = 0;
