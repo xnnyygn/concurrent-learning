@@ -27,19 +27,23 @@ public class FairLock1 implements Lock {
         Node predecessor = queue.enqueue(node);
         // PROBLEM: thread may be signaled here
         if (predecessor == queue.head.get() && reentrantTimes.get() == 0) {
-            myTurn(node);
+            myTurn(predecessor, node);
             return;
         }
         // signal only once
         LockSupport.park(this);
         // predecessor must be head and reentrant times is 0
-        myTurn(node);
+        myTurn(predecessor, node);
     }
 
-    private void myTurn(@Nonnull Node node) {
+    private void myTurn(@Nonnull Node predecessor, @Nonnull Node node) {
         owner = Thread.currentThread();
+        node.clearThread();
         queue.head.set(node);
         reentrantTimes.set(1);
+        // help GC
+        node.predecessor.set(null);
+        predecessor.successor.set(null);
     }
 
     public void unlock() {
@@ -62,7 +66,7 @@ public class FairLock1 implements Lock {
         Node node = queue.head.get();
         Node successor = queue.findSuccessor(node);
         if (successor != null) {
-            LockSupport.unpark(successor.thread);
+            LockSupport.unpark(successor.thread.get());
         }
     }
 
@@ -135,7 +139,7 @@ public class FairLock1 implements Lock {
     }
 
     private static class Node {
-        final Thread thread;
+        final AtomicReference<Thread> thread;
         final AtomicReference<Node> predecessor = new AtomicReference<>();
         // optimization
         final AtomicReference<Node> successor = new AtomicReference<>();
@@ -145,7 +149,11 @@ public class FairLock1 implements Lock {
         }
 
         Node(@Nullable Thread thread) {
-            this.thread = thread;
+            this.thread = new AtomicReference<>(thread);
+        }
+
+        void clearThread() {
+            thread.set(null);
         }
     }
 }

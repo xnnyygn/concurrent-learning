@@ -3,6 +3,7 @@ package in.xnnyygn.concurrent.rwlock;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
@@ -36,16 +37,23 @@ public class UnfairLock1 implements Lock {
         while (true) {
             if (predecessor == queue.head.get() &&
                     reentrantTimes.get() == 0 && reentrantTimes.compareAndSet(0, 1)) {
-                myTurn(node);
+                myTurn(predecessor, node);
                 return;
             }
-            LockSupport.park(this);
+            if (predecessor.signalSuccessor.get()) {
+                LockSupport.park(this);
+            } else {
+                predecessor.signalSuccessor.set(true);
+            }
         }
     }
 
-    private void myTurn(@Nonnull Node node) {
+    private void myTurn(@Nonnull Node predecessor, @Nonnull Node node) {
         owner = Thread.currentThread();
+        node.clearThread();
         queue.head.set(node);
+        node.predecessor.set(null);
+        predecessor.successor.set(null);
     }
 
     public void unlock() {
@@ -64,30 +72,12 @@ public class UnfairLock1 implements Lock {
         owner = null;
         reentrantTimes.set(0);
 
-        /*
-         * signal successor
-         *
-         * node maybe current node
-         *
-         * 1. first
-         * (sentinel, current, successor) -> (current, successor)
-         * 2. second
-         * (predecessor, current, successor) -> (current, successor)
-         * 3. sentinel only during lazy initialization
-         * no successor, ok
-         * 4. one thread -> two threads -> one thread
-         * (no node)
-         * -> (sentinel, thread 1, thread 2)
-         * -> (thread 1, thread 2)
-         * -> (thread 2)
-         * thread 2's node will be the sentinel
-         * no successor, ok
-         */
         Node node = queue.head.get();
-        if (node != null) {
+        if (node != null && node.signalSuccessor.get() &&
+                node.signalSuccessor.compareAndSet(true, false)) {
             Node successor = queue.findSuccessor(node);
             if (successor != null) {
-                LockSupport.unpark(successor.thread);
+                LockSupport.unpark(successor.thread.get());
             }
         }
     }
@@ -164,7 +154,8 @@ public class UnfairLock1 implements Lock {
     }
 
     private static class Node {
-        final Thread thread;
+        final AtomicReference<Thread> thread;
+        final AtomicBoolean signalSuccessor = new AtomicBoolean(false);
         final AtomicReference<Node> predecessor = new AtomicReference<>();
         // optimization
         final AtomicReference<Node> successor = new AtomicReference<>();
@@ -174,7 +165,11 @@ public class UnfairLock1 implements Lock {
         }
 
         Node(@Nullable Thread thread) {
-            this.thread = thread;
+            this.thread = new AtomicReference<>(thread);
+        }
+
+        void clearThread() {
+            thread.set(null);
         }
     }
 }
