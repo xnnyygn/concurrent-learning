@@ -140,10 +140,13 @@ public class UnfairTimedLock3 implements Lock {
 
     private void myTurn(@Nonnull Node node) {
         owner = Thread.currentThread();
-        queue.head.set(node);
         node.clearThread();
-        node.predecessor.set(null);
+        queue.head.set(node);
         reentrantTimes.set(1);
+
+        Node predecessor = node.predecessor.get();
+        node.predecessor.set(null);
+        predecessor.successor.set(null);
     }
 
     private void signalNormalSuccessor(@Nonnull Node node) {

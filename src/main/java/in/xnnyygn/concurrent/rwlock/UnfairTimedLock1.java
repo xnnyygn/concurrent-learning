@@ -33,7 +33,7 @@ public class UnfairTimedLock1 implements Lock {
         while (true) {
             if (predecessor == queue.head.get() &&
                     reentrantTimes.get() == 0 && reentrantTimes.compareAndSet(0, 1)) {
-                myTurn(node);
+                myTurn(predecessor, node);
                 return true;
             }
             nanos = deadline - System.nanoTime();
@@ -142,10 +142,12 @@ public class UnfairTimedLock1 implements Lock {
         }
     }
 
-    private void myTurn(@Nonnull Node node) {
+    private void myTurn(@Nonnull Node predecessor, @Nonnull Node node) {
         owner = Thread.currentThread();
-        queue.head.set(node);
         node.clearThread();
+        queue.head.set(node);
+        node.predecessor.set(null);
+        predecessor.successor.set(null);
     }
 
     private void signalNormalSuccessor(@Nonnull Node node) {
@@ -173,7 +175,9 @@ public class UnfairTimedLock1 implements Lock {
         reentrantTimes.set(0);
 
         Node node = queue.head.get();
-        if (node != null && node.status.get() == Node.STATUS_SIGNAL_SUCCESSOR) {
+        if (node != null &&
+                node.status.get() == Node.STATUS_SIGNAL_SUCCESSOR &&
+                node.status.compareAndSet(Node.STATUS_SIGNAL_SUCCESSOR, Node.STATUS_NORMAL)) {
             signalNormalSuccessor(node);
         }
     }
