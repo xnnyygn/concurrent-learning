@@ -40,32 +40,27 @@ public class LockWithCondition1 implements Lock {
     @Override
     @Nonnull
     public Condition newCondition() {
-        return new ConditionImpl(this);
+        return new ConditionImpl();
     }
 
     @SuppressWarnings("Duplicates")
-    private static class ConditionImpl implements Condition {
+    private class ConditionImpl implements Condition {
         final LinkedList<WaitingThread> waitingThreads = new LinkedList<>();
-        final Lock lock;
-
-        ConditionImpl(Lock lock) {
-            this.lock = lock;
-        }
 
         @Override
         public void await() throws InterruptedException {
             waitingThreads.addLast(new WaitingThread(Thread.currentThread()));
-            lock.unlock();
+            unlock();
             LockSupport.park(this);
-            lock.lockInterruptibly();
+            lockInterruptibly();
         }
 
         @Override
         public void awaitUninterruptibly() {
             waitingThreads.addLast(new WaitingThread(Thread.currentThread()));
-            lock.unlock();
+            unlock();
             LockSupport.park(this);
-            lock.lock();
+            lock();
         }
 
         @Override
@@ -75,9 +70,9 @@ public class LockWithCondition1 implements Lock {
             }
             long startAt = System.nanoTime();
             waitingThreads.addLast(new WaitingThread(Thread.currentThread()));
-            lock.unlock();
+            unlock();
             LockSupport.parkNanos(this, nanosTimeout);
-            lock.lock();
+            lock();
             return System.nanoTime() - startAt;
         }
 
@@ -85,10 +80,10 @@ public class LockWithCondition1 implements Lock {
         public boolean await(long time, @Nonnull TimeUnit unit) throws InterruptedException {
             WaitingThread t = new WaitingThread(Thread.currentThread());
             waitingThreads.addLast(t);
-            lock.unlock();
+            unlock();
             LockSupport.parkNanos(this, unit.toNanos(time));
             boolean signaled = (t.status.get() == WaitingThread.STATUS_SIGNALED || !t.abort());
-            lock.lock();
+            lock();
             return signaled;
         }
 
